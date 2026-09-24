@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"mime"
+	"crypto/rand"
+	"encoding/base64"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -66,7 +68,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 
-	assetPath := getAssetPath(videoID, tsType)
+	key := make([]byte, 32)
+	rand.Read(key)
+	keyString := base64.URLEncoding.EncodeToString(key)
+	
+	assetPath := getAssetPath(keyString, tsType)
 	assetDiskPath := cfg.getAssetDiskPath(assetPath)
 
 	file, err := os.Create(assetDiskPath)
