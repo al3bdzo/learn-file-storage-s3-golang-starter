@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"io"
 	"os"
@@ -72,7 +71,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create the temp video on disk", nil)
 		return
 	}
-	defer os.Remove("tubely-upload.mp4")
+	defer os.Remove(tmpVideo.Name())
 	defer tmpVideo.Close()
 
 	_, err = io.Copy(tmpVideo, video)
@@ -87,11 +86,15 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	aspectRatio, err := getVideoAspectRatio(tmpVideo.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't determine the aspect ratio of the video", err)
+		return
+	}
+
 	key := make([]byte, 32)
 	rand.Read(key)
-
-	videoExt := mediaTypeToExt(videoType)
-	keyString := fmt.Sprintf("%s%s", base64.URLEncoding.EncodeToString(key), videoExt)
+	keyString := getVideoPath(base64.URLEncoding.EncodeToString(key), videoType, aspectRatio)
 
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket: aws.String(cfg.s3Bucket),
@@ -104,7 +107,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	videoURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, keyString)
+	videoURL := cfg.getObjectURL(keyString)
 	videoDB.VideoURL = &videoURL
 	err = cfg.db.UpdateVideo(videoDB)
 	if err != nil {
