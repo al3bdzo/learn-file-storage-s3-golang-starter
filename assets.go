@@ -35,7 +35,7 @@ func getVideoPath(keyString string, mediaType string, aspectRatio string) string
 }
 
 func (cfg apiConfig) getObjectURL(key string) string {
-	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, key)
+	return fmt.Sprintf("%s,%s", cfg.s3Bucket, key)
 }
 
 func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
@@ -113,6 +113,11 @@ func processVideoForFastStart(filePath string) (string, error) {
 	cmd.Stderr = &stderr
 
 
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
 	fileInfo, err := os.Stat(outputFilePath)
 	if err != nil {
 		return "", fmt.Errorf("could not stat processed file: %v", err)
@@ -121,10 +126,5 @@ func processVideoForFastStart(filePath string) (string, error) {
 		return "", fmt.Errorf("processed file is empty")
 	}
 
-	err = cmd.Run()
-	if err != nil {
-		return "", err
-	}
-	
 	return outputFilePath, nil
 }

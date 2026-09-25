@@ -5,15 +5,18 @@ import (
 	"io"
 	"os"
 	"mime"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"strings"
+	"time"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/aws"
 
-
 	"github.com/google/uuid"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 )
 
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +51,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusUnauthorized, "You're not the video owner", err)
 		return
 	}
+
 
 	video, header, err := r.FormFile("video")
 	if err != nil {
@@ -130,6 +134,43 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, videoDB)
+	videoRes, err := cfg.dbVideoToSignedVideo(videoDB)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't git the presigned URL for this video", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, videoRes)
 }
 
+func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error){
+	presignClient := s3.NewPresignClient(s3Client)
+	req, err := presignClient.PresignGetObject(
+		context.TODO(), 
+		&s3.GetObjectInput{
+			Bucket: aws.String(bucket),
+			Key: aws.String(key),
+		},
+		s3.WithPresignExpires(expireTime),
+	)
+	if err != nil {
+		return "", err
+	}
+	return req.URL, nil
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	if video.VideoURL == nil {
+		return video, nil
+	}
+	params := strings.Split(*video.VideoURL, ",")
+	if len(params) != 2 {
+		return video, nil
+	}
+	presignedURL, err := generatePresignedURL(cfg.s3Client, params[0], params[1], 5 * time.Minute)
+	if err != nil {
+		return video, err
+	}
+	video.VideoURL = &presignedURL
+	return video, nil
+}
